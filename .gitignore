@@ -1,0 +1,9 @@
+node_modules/
+canteen.db
+canteen.db-shm
+canteen.db-wal
+*.cookies
+*.ck
+*.log
+.env
+.DS_Store
