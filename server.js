@@ -338,3 +338,102 @@ app.post('/api/orders/:id/rate', authRequired, (req, res) => {
   res.json({ message: 'Rating submitted' });
 });
 
+app.get('/api/admin/orders', authRequired, adminRequired, (req, res) => {
+  const orders = db
+    .prepare(
+      `SELECT o.*, u.mobile, u.name
+       FROM orders o
+       JOIN users u ON u.id = o.user_id
+       ORDER BY o.created_at DESC`
+    )
+    .all();
+  res.json({ orders });
+});
+
+app.patch('/api/admin/orders/:id/status', authRequired, adminRequired, (req, res) => {
+  const allowed = ['RECEIVED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'];
+  const status = String(req.body.status || '');
+  if (!allowed.includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  if (status === 'COLLECTED' && order.payment_method === 'PAY_AT_PICKUP' && order.payment_status !== 'PAID') {
+    return res.status(400).json({ error: 'Confirm payment first for Pay at Pickup orders' });
+  }
+
+  db.prepare('UPDATE orders SET order_status = ?, updated_at = ? WHERE id = ?').run(status, new Date().toISOString(), order.id);
+
+  if (status === 'READY') {
+    notify(order.user_id, order.id, 'SMS', `Order ${order.order_code} is ready for pickup.`);
+    notify(order.user_id, order.id, 'EMAIL', `Order ${order.order_code} is ready for pickup.`);
+  }
+
+  res.json({ message: 'Status updated' });
+});
+
+app.post('/api/admin/orders/:id/confirm-payment', authRequired, adminRequired, (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?').run('PAID', new Date().toISOString(), order.id);
+  res.json({ message: 'Payment confirmed' });
+});
+
+app.post('/api/admin/verify-qr', authRequired, adminRequired, (req, res) => {
+  const qrToken = String(req.body.qrToken || '');
+  const order = db
+    .prepare(
+      `SELECT o.*, u.mobile, u.name
+       FROM orders o
+       JOIN users u ON u.id = o.user_id
+       WHERE o.qr_token = ?`
+    )
+    .get(qrToken);
+
+  if (!order) {
+    return res.status(404).json({ error: 'Invalid QR token' });
+  }
+
+  return res.json({
+    order,
+    requiresPaymentConfirmation: order.payment_method === 'PAY_AT_PICKUP' && order.payment_status !== 'PAID'
+  });
+});
+
+app.post('/api/admin/collect', authRequired, adminRequired, (req, res) => {
+  const qrToken = String(req.body.qrToken || '');
+  const paymentConfirmed = Boolean(req.body.paymentConfirmed);
+
+  const order = db.prepare('SELECT * FROM orders WHERE qr_token = ?').get(qrToken);
+  if (!order) {
+    return res.status(404).json({ error: 'Invalid QR token' });
+  }
+
+  if (order.order_status === 'CANCELLED') {
+    return res.status(400).json({ error: 'Cancelled order cannot be collected' });
+  }
+
+  if (order.payment_method === 'PAY_AT_PICKUP' && order.payment_status !== 'PAID') {
+    if (!paymentConfirmed) {
+      return res.status(400).json({ error: 'Payment confirmation required' });
+    }
+    db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?').run('PAID', new Date().toISOString(), order.id);
+  }
+
+  db.prepare('UPDATE orders SET order_status = ?, collected_at = ?, updated_at = ? WHERE id = ?').run(
+    'COLLECTED',
+    new Date().toISOString(),
+    new Date().toISOString(),
+    order.id
+  );
+
+  res.json({ message: 'Order collected' });
+});
+
