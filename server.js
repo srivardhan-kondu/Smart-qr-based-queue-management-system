@@ -437,3 +437,122 @@ app.post('/api/admin/collect', authRequired, adminRequired, (req, res) => {
   res.json({ message: 'Order collected' });
 });
 
+app.get('/api/admin/slots', authRequired, adminRequired, (req, res) => {
+  const slots = db
+    .prepare(
+      `SELECT pickup_slot, COUNT(*) AS total_orders
+       FROM orders
+       WHERE order_status != 'CANCELLED'
+       GROUP BY pickup_slot
+       ORDER BY pickup_slot DESC`
+    )
+    .all();
+
+  res.json({ slots });
+});
+
+app.get('/api/admin/analytics', authRequired, adminRequired, (req, res) => {
+  const sales = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS total_orders,
+         COALESCE(SUM(CASE WHEN order_status != 'CANCELLED' THEN total_amount ELSE 0 END), 0) AS gross_sales,
+         COALESCE(SUM(CASE WHEN payment_status = 'PAID' THEN total_amount ELSE 0 END), 0) AS paid_sales
+       FROM orders`
+    )
+    .get();
+
+  const ratings = db
+    .prepare('SELECT COUNT(*) AS total_ratings, COALESCE(ROUND(AVG(stars), 2), 0) AS avg_rating FROM ratings')
+    .get();
+
+  res.json({ sales, ratings });
+});
+
+app.get('/api/admin/stats', authRequired, adminRequired, (req, res) => {
+  const today = dayjs().format('YYYY-MM-DD');
+
+  const statusCounts = db
+    .prepare("SELECT order_status, COUNT(*) AS count FROM orders GROUP BY order_status")
+    .all();
+
+  const todayStats = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS today_orders,
+         COALESCE(SUM(CASE WHEN order_status != 'CANCELLED' THEN total_amount ELSE 0 END), 0) AS today_revenue
+       FROM orders
+       WHERE DATE(created_at) = ?`
+    )
+    .get(today);
+
+  const activeOrders = db
+    .prepare(
+      `SELECT o.*, u.name, u.mobile
+       FROM orders o
+       JOIN users u ON u.id = o.user_id
+       WHERE o.order_status IN ('RECEIVED', 'PREPARING', 'READY')
+       ORDER BY o.created_at ASC`
+    )
+    .all();
+
+  res.json({ statusCounts, todayStats, activeOrders });
+});
+
+app.get('/api/admin/menu-all', authRequired, adminRequired, (req, res) => {
+  const items = db.prepare('SELECT * FROM menu_items ORDER BY category, price').all();
+  res.json({ items });
+});
+
+app.patch('/api/admin/menu/:id/toggle', authRequired, adminRequired, (req, res) => {
+  const item = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  const newActive = item.active ? 0 : 1;
+  db.prepare('UPDATE menu_items SET active = ? WHERE id = ?').run(newActive, item.id);
+  return res.json({ active: newActive });
+});
+
+app.get('/api/quick-access-qr', async (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const dataUrl = await QRCode.toDataURL(baseUrl);
+  res.json({ url: baseUrl, qrDataUrl: dataUrl });
+});
+
+setInterval(() => {
+  const nowIso = new Date().toISOString();
+  const ordersToPrepare = db
+    .prepare("SELECT id, user_id, order_code FROM orders WHERE order_status = 'RECEIVED' AND cancel_deadline <= ?")
+    .all(nowIso);
+
+  if (ordersToPrepare.length > 0) {
+    const stmt = db.prepare("UPDATE orders SET order_status = 'PREPARING', updated_at = ? WHERE id = ?");
+    for (const order of ordersToPrepare) {
+      stmt.run(nowIso, order.id);
+      notify(order.user_id, order.id, 'SMS', `Order ${order.order_code} is now preparing.`);
+    }
+  }
+}, 15000);
+
+app.get('/api/notifications/my', authRequired, (req, res) => {
+  const notifications = db
+    .prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY sent_at DESC LIMIT 20')
+    .all(req.session.user.id);
+  res.json({ notifications });
+});
+
+app.get('/student', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Catch-all: any unknown route → student app
+app.use((_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`Smart QR Based Queue Management System running at http://localhost:${PORT}`);
+});
