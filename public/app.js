@@ -117,3 +117,144 @@ function orderCard(order) {
   `;
 }
 
+async function loadOrders() {
+  const data = await api('/api/orders/my');
+  el('ordersWrap').innerHTML = data.orders.map(orderCard).join('') || '<p>No orders yet.</p>';
+
+  document.querySelectorAll('[data-cancel-id]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api(`/api/orders/${btn.dataset.cancelId}/cancel`, 'POST');
+        toast('Order cancelled');
+        await refreshAll();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-rate-id]').forEach((select) => {
+    select.addEventListener('change', async () => {
+      if (!select.value) return;
+      try {
+        await api(`/api/orders/${select.dataset.rateId}/rate`, 'POST', { stars: Number(select.value) });
+        toast('Rating saved');
+        await loadOrders();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+  });
+}
+
+async function loadNotifications() {
+  const data = await api('/api/notifications/my');
+  const list = data.notifications
+    .map((n) => `<li>[${n.channel}] ${n.message} (${new Date(n.sent_at).toLocaleString()})</li>`)
+    .join('');
+  el('notificationList').innerHTML = list || '<li>No notifications yet.</li>';
+}
+
+async function loadQuickQr() {
+  const data = await api('/api/quick-access-qr');
+  el('quickQr').src = data.qrDataUrl;
+}
+
+async function refreshAll() {
+  const me = await api('/api/auth/me');
+  state.user = me.user;
+  renderProfile();
+  if (!state.user) return;
+
+  const budget = el('budgetFilter').value;
+  const menu = await api(`/api/menu?budget=${budget}`);
+  state.menu = menu.items;
+
+  const slots = await api('/api/pickup-slots');
+  state.slots = slots.slots;
+
+  renderMenu();
+  renderSlots();
+  await loadOrders();
+  await loadNotifications();
+  await loadQuickQr();
+}
+
+el('loginBtn').addEventListener('click', async () => {
+  try {
+    const data = await api('/api/auth/login', 'POST', { mobile: el('mobile').value, role: 'student' });
+    // If this number is an admin account, redirect to admin panel automatically
+    if (data.user && data.user.role === 'admin') {
+      window.location.href = '/admin';
+      return;
+    }
+    toast('Logged in');
+    await refreshAll();
+  } catch (e) {
+    toast(e.message);
+  }
+});
+
+el('logoutBtn').addEventListener('click', async () => {
+  await api('/api/auth/logout', 'POST');
+  state.user = null;
+  state.menu = [];
+  state.cart.clear();
+  renderProfile();
+  toast('Logged out');
+});
+
+el('budgetFilter').addEventListener('change', refreshAll);
+
+el('paymentMethod').addEventListener('change', () => {
+  const method = el('paymentMethod').value;
+  el('providerWrap').classList.toggle('hidden', method !== 'ONLINE');
+});
+
+el('placeOrderBtn').addEventListener('click', async () => {
+  try {
+    const items = [];
+    state.cart.forEach((qty, itemId) => {
+      if (qty > 0) items.push({ itemId, qty });
+    });
+
+    if (items.length === 0) {
+      toast('Choose at least one item');
+      return;
+    }
+
+    const payload = {
+      items,
+      pickupSlot: el('pickupSlot').value,
+      paymentMethod: el('paymentMethod').value,
+      paymentProvider: el('paymentMethod').value === 'ONLINE' ? el('paymentProvider').value : null
+    };
+
+    const result = await api('/api/orders', 'POST', payload);
+    toast(`Order placed: ${result.orderCode}`);
+    state.cart.clear();
+    await refreshAll();
+  } catch (e) {
+    toast(e.message);
+  }
+});
+
+// On page load: if already logged in as admin, redirect to admin panel
+refreshAll().catch(() => {
+  renderProfile();
+});
+
+(async () => {
+  try {
+    const me = await api('/api/auth/me');
+    if (me.user && me.user.role === 'admin') {
+      window.location.href = '/admin';
+    }
+  } catch (_) {}
+})();
+
+setInterval(() => {
+  if (state.user) {
+    loadOrders().catch(() => {});
+  }
+}, 10000);
