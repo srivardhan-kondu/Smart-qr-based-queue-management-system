@@ -113,3 +113,28 @@ app.get('/api/auth/me', (req, res) => {
   return res.json({ user: { ...req.session.user, wallet_balance: wallet ? wallet.wallet_balance : 0 } });
 });
 
+app.get('/api/menu', authRequired, (req, res) => {
+  const budget = String(req.query.budget || 'all');
+  let query = 'SELECT * FROM menu_items WHERE active = 1';
+
+  if (budget === 'under50') query += ' AND price < 50';
+  if (budget === 'under100') query += ' AND price < 100';
+  if (budget === 'combo80') query += ' AND is_combo = 1 AND price <= 80';
+
+  query += ' ORDER BY category, price';
+  const items = db.prepare(query).all();
+  return res.json({ items });
+});
+
+app.get('/api/pickup-slots', authRequired, (req, res) => {
+  const slots = [];
+  const now = dayjs();
+
+  for (let i = 1; i <= 8; i += 1) {
+    const slot = now.add(i * 15, 'minute');
+    slots.push(slot.format('YYYY-MM-DD HH:mm'));
+  }
+
+  res.json({ slots });
+});
+
