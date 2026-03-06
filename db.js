@@ -84,3 +84,42 @@ function initDb() {
   const adminExists = db.prepare('SELECT id FROM users WHERE mobile = ?').get('9999999999');
   if (!adminExists) {
     db.prepare(
+      'INSERT INTO users (mobile, name, role, wallet_balance, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run('9999999999', 'Canteen Admin', 'admin', 0, new Date().toISOString());
+  }
+
+  const menuCount = db.prepare('SELECT COUNT(*) AS count FROM menu_items').get().count;
+  if (menuCount === 0) {
+    const seedItems = [
+      ['Idli (2 pcs)', 'Breakfast', 30, 6, 0],
+      ['Veg Puff', 'Snacks', 25, 4, 0],
+      ['Samosa', 'Snacks', 20, 5, 0],
+      ['Tea', 'Beverage', 15, 3, 0],
+      ['Coffee', 'Beverage', 20, 3, 0],
+      ['Masala Dosa', 'Breakfast', 55, 10, 0],
+      ['Veg Fried Rice', 'Lunch', 90, 12, 0],
+      ['Lemon Rice + Curd', 'Combo', 80, 9, 1],
+      ['Mini Meal Combo', 'Combo', 79, 11, 1],
+      ['Sandwich + Juice', 'Combo', 75, 8, 1],
+      ['Paneer Roll', 'Snacks', 60, 7, 0],
+      ['Curd Rice', 'Lunch', 50, 6, 0]
+    ];
+
+    const stmt = db.prepare(
+      'INSERT INTO menu_items (name, category, price, prep_time_min, is_combo, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+
+    const insertMany = db.transaction((items) => {
+      for (const item of items) {
+        stmt.run(item[0], item[1], item[2], item[3], item[4], new Date().toISOString());
+      }
+    });
+
+    insertMany(seedItems);
+  }
+}
+
+module.exports = {
+  db,
+  initDb
+};
