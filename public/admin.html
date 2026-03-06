@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart QR Based Queue Management System - Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/html5-qrcode" defer></script>
+    <style>
+      :root {
+        --bg: #f0f4f8;
+        --sidebar-bg: #1e293b;
+        --card: #ffffff;
+        --brand: #6366f1;
+        --brand-hover: #4f46e5;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --border: #e2e8f0;
+        --green: #10b981;
+        --yellow: #f59e0b;
+        --red: #ef4444;
+        --blue: #3b82f6;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'Poppins', 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; }
+
+      /* ── Login ── */
+      #loginScreen {
+        display: flex; align-items: center; justify-content: center;
+        min-height: 100vh; padding: 20px;
+        background: linear-gradient(135deg, #1e293b 0%, #312e81 100%);
+      }
+      #loginScreen.hidden { display: none; }
+      .login-card {
+        background: white; border-radius: 20px; padding: 40px;
+        width: 100%; max-width: 380px;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.35); text-align: center;
+      }
+      .login-card .logo { font-size: 3rem; margin-bottom: 10px; }
+      .login-card h1 { font-size: 1.4rem; margin-bottom: 6px; }
+      .login-card p { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; }
+      .login-input {
+        width: 100%; padding: 12px 16px; border: 2px solid var(--border);
+        border-radius: 10px; font-size: 1rem; font-family: inherit;
+        margin-bottom: 12px; transition: border-color .2s;
+      }
+      .login-input:focus { outline: none; border-color: var(--brand); }
+      .login-btn {
+        width: 100%; padding: 13px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white; border: none; border-radius: 10px;
+        font-size: 1rem; font-family: inherit; font-weight: 600; cursor: pointer;
+        transition: transform .15s, box-shadow .15s;
+      }
+      .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(99,102,241,.4); }
+      .login-hint { margin-top: 14px; font-size: 0.78rem; color: var(--muted); }
+
+      /* ── App Shell ── */
+      #appShell { display: flex; min-height: 100vh; }
+      #appShell.hidden { display: none; }
+
+      /* ── Sidebar ── */
+      #sidebar {
+        width: 230px; min-height: 100vh; background: var(--sidebar-bg);
+        display: flex; flex-direction: column;
+        position: sticky; top: 0; height: 100vh; overflow-y: auto; flex-shrink: 0;
+      }
+      .sidebar-logo {
+        padding: 18px 16px 14px; display: flex; align-items: center; gap: 10px;
+        color: white; font-size: 1rem; font-weight: 700;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+      }
+      .sidebar-logo .logo-emoji { font-size: 1.6rem; }
+      .sidebar-section { padding: 10px 8px 4px; }
+      .sidebar-label {
+        padding: 6px 10px 4px; font-size: 0.68rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.3);
+      }
+      .nav-btn {
+        display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px;
+        background: none; border: none; color: #94a3b8; font-family: inherit;
+        font-size: 0.88rem; font-weight: 500; cursor: pointer; text-align: left;
+        border-radius: 8px; margin-bottom: 2px; transition: background .15s, color .15s;
+      }
+      .nav-btn:hover { background: rgba(255,255,255,.06); color: white; }
+      .nav-btn.active { background: var(--brand); color: white; }
+      .nav-btn .icon { font-size: 1rem; width: 20px; text-align: center; }
+      .nav-badge {
+        margin-left: auto; background: #ef4444; color: white;
+        font-size: 0.68rem; font-weight: 700; padding: 1px 6px;
+        border-radius: 10px; min-width: 18px; text-align: center;
+      }
+      .nav-badge.hidden { display: none; }
+      .sidebar-footer {
+        margin-top: auto; padding: 14px 16px;
+        border-top: 1px solid rgba(255,255,255,.08);
+      }
+      .admin-info { color: #94a3b8; font-size: 0.78rem; margin-bottom: 10px; }
+      .admin-info strong { color: white; display: block; font-size: 0.85rem; }
+      .logout-btn {
+        width: 100%; padding: 8px; background: rgba(239,68,68,.15);
+        border: 1px solid rgba(239,68,68,.3); color: #fca5a5;
+        border-radius: 8px; font-family: inherit; font-size: 0.82rem; cursor: pointer;
+        transition: background .15s;
+      }
+      .logout-btn:hover { background: rgba(239,68,68,.3); }
+
+      /* ── Main ── */
+      #mainContent { flex: 1; overflow-y: auto; }
+      .tab-content { display: none; padding: 24px; max-width: 1200px; }
+      .tab-content.active { display: block; }
+      .page-title {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 22px;
+      }
+      .page-title h2 { font-size: 1.3rem; font-weight: 700; }
+
+      /* ── Stats Grid ── */
+      .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 22px; }
+      .stat-card {
+        background: white; border-radius: 14px; padding: 18px 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.06); border-left: 4px solid var(--brand);
+      }
+      .stat-card.green  { border-left-color: var(--green); }
+      .stat-card.yellow { border-left-color: var(--yellow); }
+      .stat-card.red    { border-left-color: var(--red); }
+      .stat-card.blue   { border-left-color: var(--blue); }
+      .stat-label { font-size: 0.72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+      .stat-value { font-size: 1.9rem; font-weight: 700; line-height: 1; color: var(--ink); }
+      .stat-sub { font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+
+      /* ── Panel ── */
+      .panel { background: white; border-radius: 14px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 18px; }
+      .panel-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+      .panel-hdr h3 { font-size: 0.95rem; font-weight: 600; }
+
+      /* ── Buttons ── */
+      .btn { padding: 7px 16px; border-radius: 8px; border: none; font-family: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: filter .15s; }
+      .btn:hover { filter: brightness(.9); }
+      .btn-xs { padding: 4px 10px; font-size: 0.75rem; }
+      .btn-primary { background: var(--brand); color: white; }
+      .btn-success { background: var(--green); color: white; }
+      .btn-warning { background: var(--yellow); color: white; }
+      .btn-danger  { background: var(--red); color: white; }
+      .btn-ghost { background: var(--bg); border: 1px solid var(--border); color: var(--ink); }
+
+      /* ── Filter Row ── */
+      .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+      .fbtn { padding: 6px 14px; border: 1px solid var(--border); background: white; border-radius: 20px; font-family: inherit; font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: all .15s; }
+      .fbtn:hover { background: var(--bg); }
+      .fbtn.active { background: var(--brand); border-color: var(--brand); color: white; }
+
+      /* ── Table ── */
+      .table-wrap { overflow-x: auto; border-radius: 12px; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+      th { background: #f8fafc; text-align: left; padding: 10px 12px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); border-bottom: 2px solid var(--border); }
+      td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+      tr:hover td { background: #fafbff; }
+      tr:last-child td { border-bottom: none; }
+
+      /* ── Badges ── */
+      .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+      .b-RECEIVED  { background: #dbeafe; color: #1d4ed8; }
+      .b-PREPARING { background: #ffedd5; color: #c2410c; }
+      .b-READY     { background: #dcfce7; color: #15803d; }
+      .b-COLLECTED { background: #f0fdf4; color: #166534; }
+      .b-CANCELLED { background: #fee2e2; color: #b91c1c; }
+      .b-PAID      { background: #dcfce7; color: #15803d; }
+      .b-PENDING   { background: #fef3c7; color: #b45309; }
+      .b-PAY_AT_PICKUP { background: #e0e7ff; color: #4338ca; }
+      .b-WALLET    { background: #faf5ff; color: #7c3aed; }
+      .b-ONLINE    { background: #ecfeff; color: #0e7490; }
+
+      /* ── Status Select ── */
+      .status-sel { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.78rem; cursor: pointer; background: white; }
+
+      /* ── Action Order Cards (Dashboard) ── */
+      .act-order {
+        display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+        border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px;
+        background: white; transition: box-shadow .15s;
+      }
+      .act-order:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+      .act-order-code { font-weight: 700; font-size: 0.88rem; }
+      .act-order-info { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+      .act-order-right { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+      /* ── QR Section ── */
+      .qr-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      .qr-drop {
+        border: 2px dashed var(--border); border-radius: 12px; overflow: hidden;
+        min-height: 220px; display: flex; align-items: center; justify-content: center;
+        background: #f8fafc; margin-bottom: 12px;
+      }
+      .qr-result {
+        background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+        border: 1px solid #bae6fd; border-radius: 14px; padding: 18px;
+      }
+      .qr-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(0,0,0,.05); font-size: 0.82rem; }
+      .qr-row:last-child { border-bottom: none; }
+      .qr-lbl { color: var(--muted); }
+      .qr-val { font-weight: 600; }
+
+      /* ── Menu Grid ── */
+      .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+      .menu-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; position: relative; transition: box-shadow .15s; }
+      .menu-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.09); }
+      .menu-card.off { opacity: .5; }
+      .menu-name { font-weight: 700; font-size: 0.88rem; margin-bottom: 3px; }
+      .menu-cat  { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+      .menu-price { font-size: 1.1rem; font-weight: 700; color: var(--brand); }
+      .menu-meta { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+      .toggle-pill {
+        position: absolute; top: 10px; right: 10px; padding: 3px 9px;
+        font-size: 0.68rem; font-weight: 700; border-radius: 20px; border: none; cursor: pointer; font-family: inherit;
+      }
+      .toggle-pill.on  { background: #dcfce7; color: #15803d; }
+      .toggle-pill.off { background: #fee2e2; color: #b91c1c; }
+
+      /* ── Analytics ── */
+      .an-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .bar-lbl { width: 88px; font-size: 0.75rem; color: var(--muted); }
+      .bar-track { flex: 1; background: #f1f5f9; border-radius: 20px; height: 10px; overflow: hidden; }
+      .bar-fill { height: 100%; border-radius: 20px; transition: width .5s; }
+      .bar-cnt { width: 28px; text-align: right; font-weight: 700; font-size: 0.82rem; }
+      .slot-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.82rem; }
+      .slot-row:last-child { border-bottom: none; }
+
+      /* ── Toast ── */
+      #toast {
+        position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: white;
+        padding: 10px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 500;
+        display: none; z-index: 9999; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+        animation: slideUp .2s ease;
+      }
+      @keyframes slideUp { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+      /* ── Mobile ── */
+      @media (max-width: 768px) {
+        #appShell { flex-direction: column; }
+        #sidebar { width: 100%; min-height: unset; height: auto; position: relative; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 8px; gap: 2px; }
+        .sidebar-logo { display: none; }
+        .sidebar-label { display: none; }
+        .sidebar-section { padding: 0; display: contents; }
+        .nav-btn { flex: 1; min-width: 0; justify-content: center; padding: 8px 4px; border-radius: 8px; }
+        .nav-btn .label { display: none; }
+        .sidebar-footer { width: 100%; padding: 6px 8px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+        .admin-info { display: none; }
+        .tab-content { padding: 14px; }
+        .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-value { font-size: 1.5rem; }
+        .qr-cols { grid-template-columns: 1fr; }
+        .an-cols  { grid-template-columns: 1fr; }
+        .table-wrap { font-size: 0.75rem; }
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- ══════════ LOGIN ══════════ -->
+    <div id="loginScreen">
+      <div class="login-card">
+        <div class="logo">🍽️</div>
+        <h1>Smart QR Based Queue Management System</h1>
+        <p>Sign in with your admin mobile number</p>
+        <input class="login-input" id="adminMobile" type="tel" placeholder="Admin Mobile Number" value="9999999999" maxlength="10" />
+        <button class="login-btn" id="adminLoginBtn">Login as Admin →</button>
+        <p class="login-hint">Demo admin: <strong>9999999999</strong></p>
+      </div>
+    </div>
+
+    <!-- ══════════ APP SHELL ══════════ -->
+    <div id="appShell" class="hidden">
+
+      <!-- SIDEBAR -->
+      <aside id="sidebar">
+        <div class="sidebar-logo">
+          <span class="logo-emoji">🍽️</span>
+          <span>QMS Admin</span>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Navigation</div>
+          <button class="nav-btn active" data-tab="dashboard">
+            <span class="icon">📊</span><span class="label">Dashboard</span>
+            <span class="nav-badge hidden" id="badgeActive"></span>
+          </button>
+          <button class="nav-btn" data-tab="orders">
+            <span class="icon">📋</span><span class="label">Orders</span>
+          </button>
+          <button class="nav-btn" data-tab="qrscan">
+            <span class="icon">📷</span><span class="label">QR Scan</span>
+          </button>
+          <button class="nav-btn" data-tab="menu">
+            <span class="icon">🍕</span><span class="label">Menu</span>
+          </button>
+          <button class="nav-btn" data-tab="analytics">
+            <span class="icon">📈</span><span class="label">Analytics</span>
+          </button>
+        </div>
+        <div class="sidebar-footer">
+          <div class="admin-info">
+            <span>Logged in as</span>
+            <strong id="adminInfoSidebar">–</strong>
+          </div>
+          <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+      </aside>
+
+      <!-- MAIN CONTENT -->
+      <div id="mainContent">
+
+        <!-- ── DASHBOARD ── -->
+        <div class="tab-content active" id="tab-dashboard">
+          <div class="page-title">
+            <h2>Good day, Admin 👋</h2>
+            <button class="btn btn-primary btn-xs" id="refreshDashBtn">↻ Refresh</button>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card blue">
+              <div class="stat-label">Today's Orders</div>
+              <div class="stat-value" id="statTodayOrders">–</div>
+              <div class="stat-sub">All time: <span id="statAllOrders">–</span></div>
+            </div>
+            <div class="stat-card green">
+              <div class="stat-label">Today's Revenue</div>
+              <div class="stat-value" id="statTodayRev">–</div>
+              <div class="stat-sub">Total: <span id="statTotalRev">–</span></div>
+            </div>
+            <div class="stat-card yellow">
+              <div class="stat-label">Active Orders</div>
+              <div class="stat-value" id="statActive">–</div>
+              <div class="stat-sub">Need attention</div>
+            </div>
+            <div class="stat-card red">
+              <div class="stat-label">Avg Rating</div>
+              <div class="stat-value" id="statRating">–</div>
+              <div class="stat-sub"><span id="statRatingCount">–</span> reviews</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-hdr">
+              <h3>⚡ Orders Needing Action</h3>
+            </div>
+            <div id="actionOrdersWrap"><p style="color:#94a3b8;font-size:.85rem">Loading…</p></div>
+          </div>
+        </div>
+
+        <!-- ── ORDERS ── -->
+        <div class="tab-content" id="tab-orders">
+          <div class="page-title">
+            <h2>All Orders</h2>
+            <button class="btn btn-primary btn-xs" id="refreshOrdersBtn">↻ Refresh</button>
+          </div>
+          <div class="filter-row" id="orderFilters">
+            <button class="fbtn active" data-filter="ALL">All</button>
+            <button class="fbtn" data-filter="RECEIVED">Received</button>
+            <button class="fbtn" data-filter="PREPARING">Preparing</button>
+            <button class="fbtn" data-filter="READY">Ready</button>
+            <button class="fbtn" data-filter="COLLECTED">Collected</button>
+            <button class="fbtn" data-filter="CANCELLED">Cancelled</button>
+          </div>
+          <div class="panel" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th><th>Order</th><th>Student</th>
+                    <th>Amount</th><th>Payment</th><th>Status</th>
+                    <th>Pickup Slot</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersBody">
+                  <tr><td colspan="8" style="text-align:center;padding:32px;color:#94a3b8">Loading orders…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── QR SCAN ── -->
+        <div class="tab-content" id="tab-qrscan">
+          <div class="page-title"><h2>QR Verification &amp; Collection</h2></div>
+          <div class="qr-cols">
+            <div>
+              <div class="panel">
+                <h3 style="margin-bottom:12px">📷 Camera Scanner</h3>
+                <div class="qr-drop"><div id="reader" style="width:260px;max-width:100%"></div></div>
+                <p style="font-size:.75rem;color:#94a3b8;margin-top:6px">Point camera at student's QR code. Allow camera permission.</p>
+              </div>
+              <div class="panel">
+                <h3 style="margin-bottom:12px">⌨️ Manual Token Entry</h3>
+                <div style="display:flex;gap:8px">
+                  <input id="qrTokenInput" placeholder="Paste QR token here"
+                    style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem" />
+                  <button class="btn btn-primary" id="verifyQrBtn">Verify</button>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div id="qrEmptyPanel" class="panel" style="text-align:center;padding:40px 20px">
+                <div style="font-size:3.5rem;margin-bottom:14px">📷</div>
+                <p style="color:#94a3b8;font-size:.88rem">Scan or enter a QR token<br>to see order details here</p>
+              </div>
+              <div id="qrResultPanel" class="panel" style="display:none">
+                <h3 style="color:#0369a1;margin-bottom:14px">✅ Order Verified</h3>
+                <div class="qr-result" id="qrResultDetails"></div>
+                <div style="margin-top:16px">
+                  <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;margin-bottom:12px">
+                    <input type="checkbox" id="paymentConfirmed" />
+                    <strong>Payment Received</strong>&nbsp;<span style="color:var(--muted)">(required for Pay at Pickup)</span>
+                  </label>
+                  <button class="btn btn-success" id="collectBtn" style="width:100%;padding:13px;font-size:.95rem">
+                    ✓ Mark as Collected
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── MENU ── -->
+        <div class="tab-content" id="tab-menu">
+          <div class="page-title">
+            <h2>Menu Management</h2>
+            <button class="btn btn-primary btn-xs" id="refreshMenuBtn">↻ Refresh</button>
+          </div>
+          <p style="color:var(--muted);font-size:.83rem;margin-bottom:16px">
+            Toggle items on/off to control availability. Students only see active items.
+          </p>
+          <div class="menu-grid" id="menuGrid"><p style="color:#94a3b8">Loading…</p></div>
+        </div>
+
+        <!-- ── ANALYTICS ── -->
+        <div class="tab-content" id="tab-analytics">
+          <div class="page-title">
+            <h2>Analytics &amp; Reports</h2>
+            <button class="btn btn-primary btn-xs" id="refreshAnalyticsBtn">↻ Refresh</button>
+          </div>
+          <div class="stats-grid" style="margin-bottom:20px">
+            <div class="stat-card green">
+              <div class="stat-label">Gross Revenue</div>
+              <div class="stat-value" id="anGross">–</div>
+            </div>
+            <div class="stat-card blue">
+              <div class="stat-label">Paid Revenue</div>
+              <div class="stat-value" id="anPaid">–</div>
+            </div>
+            <div class="stat-card yellow">
+              <div class="stat-label">Total Orders</div>
+              <div class="stat-value" id="anOrders">–</div>
+            </div>
+            <div class="stat-card red">
+              <div class="stat-label">Avg Rating</div>
+              <div class="stat-value" id="anRating">–</div>
+              <div class="stat-sub"><span id="anRatingCount">–</span> reviews</div>
+            </div>
+          </div>
+          <div class="an-cols">
+            <div class="panel">
+              <div class="panel-hdr"><h3>📊 Status Breakdown</h3></div>
+              <div id="statusBreakdown"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-hdr"><h3>🕐 Pickup Slots</h3></div>
+              <div id="slotsBreakdown"></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /mainContent -->
+    </div><!-- /appShell -->
+
+    <div id="toast"></div>
+    <script src="/admin.js"></script>
+  </body>
+</html>
