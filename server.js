@@ -249,3 +249,92 @@ app.post('/api/orders', authRequired, async (req, res) => {
   });
 });
 
+app.get('/api/orders/my', authRequired, (req, res) => {
+  const orders = db
+    .prepare(
+      `SELECT o.*, COALESCE(r.stars, 0) AS rating_stars
+       FROM orders o
+       LEFT JOIN ratings r ON r.order_id = o.id
+       WHERE o.user_id = ?
+       ORDER BY o.created_at DESC`
+    )
+    .all(req.session.user.id);
+  res.json({ orders });
+});
+
+app.get('/api/orders/:id', authRequired, (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').get(req.params.id, req.session.user.id);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  const items = db
+    .prepare(
+      `SELECT oi.*, mi.name
+       FROM order_items oi
+       JOIN menu_items mi ON mi.id = oi.menu_item_id
+       WHERE oi.order_id = ?`
+    )
+    .all(order.id);
+
+  return res.json({ order, items });
+});
+
+app.post('/api/orders/:id/cancel', authRequired, (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').get(req.params.id, req.session.user.id);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+  if (order.order_status !== 'RECEIVED') {
+    return res.status(400).json({ error: 'Cancellation allowed only before preparation starts' });
+  }
+  if (dayjs().isAfter(dayjs(order.cancel_deadline))) {
+    return res.status(400).json({ error: 'Cancellation window expired' });
+  }
+
+  db.prepare('UPDATE orders SET order_status = ?, updated_at = ? WHERE id = ?').run('CANCELLED', new Date().toISOString(), order.id);
+
+  if (order.payment_method === 'WALLET' && order.payment_status === 'PAID') {
+    db.prepare('UPDATE users SET wallet_balance = wallet_balance + ? WHERE id = ?').run(order.total_amount, req.session.user.id);
+  }
+
+  res.json({ message: 'Order cancelled' });
+});
+
+app.post('/api/orders/:id/rate', authRequired, (req, res) => {
+  const stars = Number(req.body.stars);
+  const comment = String(req.body.comment || '').slice(0, 250);
+
+  if (![1, 2, 3, 4, 5].includes(stars)) {
+    return res.status(400).json({ error: 'Rating must be 1-5' });
+  }
+
+  const order = db.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').get(req.params.id, req.session.user.id);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+  if (order.order_status !== 'COLLECTED') {
+    return res.status(400).json({ error: 'Rating allowed only after collection' });
+  }
+
+  const existing = db.prepare('SELECT * FROM ratings WHERE order_id = ?').get(order.id);
+  if (existing) {
+    db.prepare('UPDATE ratings SET stars = ?, comment = ?, created_at = ? WHERE order_id = ?').run(
+      stars,
+      comment,
+      new Date().toISOString(),
+      order.id
+    );
+  } else {
+    db.prepare('INSERT INTO ratings (order_id, user_id, stars, comment, created_at) VALUES (?, ?, ?, ?, ?)').run(
+      order.id,
+      req.session.user.id,
+      stars,
+      comment,
+      new Date().toISOString()
+    );
+  }
+
+  res.json({ message: 'Rating submitted' });
+});
+
