@@ -138,3 +138,114 @@ app.get('/api/pickup-slots', authRequired, (req, res) => {
   res.json({ slots });
 });
 
+app.post('/api/orders', authRequired, async (req, res) => {
+  const { items, pickupSlot, paymentMethod, paymentProvider } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Add at least one item' });
+  }
+  if (!pickupSlot) {
+    return res.status(400).json({ error: 'Pickup slot is required' });
+  }
+
+  const method = String(paymentMethod || 'PAY_AT_PICKUP');
+  if (!['ONLINE', 'WALLET', 'PAY_AT_PICKUP'].includes(method)) {
+    return res.status(400).json({ error: 'Invalid payment method' });
+  }
+
+  const menuStmt = db.prepare('SELECT * FROM menu_items WHERE id = ? AND active = 1');
+  let total = 0;
+  let prepMax = 0;
+  const orderItems = [];
+
+  for (const item of items) {
+    const menu = menuStmt.get(item.itemId);
+    const qty = Number(item.qty || 0);
+    if (!menu || qty <= 0) continue;
+    total += menu.price * qty;
+    prepMax = Math.max(prepMax, menu.prep_time_min);
+    orderItems.push({ menu, qty });
+  }
+
+  if (orderItems.length === 0) {
+    return res.status(400).json({ error: 'No valid items selected' });
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.user.id);
+  let paymentStatus = 'PENDING';
+
+  if (method === 'WALLET') {
+    if (user.wallet_balance < total) {
+      return res.status(400).json({ error: 'Insufficient wallet balance' });
+    }
+    db.prepare('UPDATE users SET wallet_balance = wallet_balance - ? WHERE id = ?').run(total, user.id);
+    paymentStatus = 'PAID';
+  }
+
+  if (method === 'ONLINE') {
+    if (!['PhonePe', 'Google Pay', 'PayU'].includes(paymentProvider)) {
+      return res.status(400).json({ error: 'Choose payment provider: PhonePe, Google Pay, or PayU' });
+    }
+    paymentStatus = 'PAID';
+  }
+
+  const orderCode = `ORD-${Date.now()}`;
+  const qrToken = uuidv4();
+  const cancelDeadline = dayjs().add(CANCELLATION_WINDOW_MIN, 'minute').toISOString();
+  const estimatedPrep = prepMax + 3;
+
+  const qrPayload = JSON.stringify({ orderCode, qrToken });
+  const qrDataUrl = await QRCode.toDataURL(qrPayload);
+
+  const nowIso = new Date().toISOString();
+
+  const tx = db.transaction(() => {
+    const orderResult = db
+      .prepare(
+        `INSERT INTO orders (
+          order_code, user_id, total_amount, payment_method, payment_provider, payment_status,
+          order_status, pickup_slot, estimated_prep_min, cancel_deadline, qr_token, qr_data_url,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        orderCode,
+        user.id,
+        total,
+        method,
+        paymentProvider || null,
+        paymentStatus,
+        'RECEIVED',
+        pickupSlot,
+        estimatedPrep,
+        cancelDeadline,
+        qrToken,
+        qrDataUrl,
+        nowIso,
+        nowIso
+      );
+
+    const orderId = orderResult.lastInsertRowid;
+    const itemStmt = db.prepare(
+      'INSERT INTO order_items (order_id, menu_item_id, qty, item_price) VALUES (?, ?, ?, ?)'
+    );
+    for (const row of orderItems) {
+      itemStmt.run(orderId, row.menu.id, row.qty, row.menu.price);
+    }
+
+    return orderId;
+  });
+
+  const orderId = tx();
+
+  return res.status(201).json({
+    message: 'Order placed successfully',
+    estimatedPrep,
+    orderId,
+    orderCode,
+    qrToken,
+    cancelDeadline,
+    paymentStatus
+  });
+});
+
