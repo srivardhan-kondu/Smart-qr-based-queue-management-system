@@ -429,6 +429,31 @@
           <p style="color:var(--muted);font-size:.83rem;margin-bottom:16px">
             Toggle items on/off to control availability. Students only see active items.
           </p>
+
+          <!-- Add New Item Form -->
+          <div class="panel" style="margin-bottom:20px;padding:18px;">
+            <h3 style="margin:0 0 12px;font-size:.95rem">➕ Add New Menu Item</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+              <input id="newItemName" placeholder="Item name" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem" />
+              <select id="newItemCategory" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem">
+                <option value="">Category</option>
+                <option value="Breakfast">Breakfast</option>
+                <option value="Snacks">Snacks</option>
+                <option value="Beverage">Beverage</option>
+                <option value="Lunch">Lunch</option>
+                <option value="Combo">Combo</option>
+              </select>
+              <input id="newItemPrice" type="number" min="1" placeholder="Price (₹)" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem" />
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px">
+              <input id="newItemPrep" type="number" min="1" placeholder="Prep time (min)" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem" />
+              <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted)">
+                <input type="checkbox" id="newItemCombo" /> Is Combo?
+              </label>
+              <button class="btn btn-success" id="addMenuItemBtn" style="padding:10px;font-size:.88rem">Add Item</button>
+            </div>
+          </div>
+
           <div class="menu-grid" id="menuGrid"><p style="color:#94a3b8">Loading…</p></div>
         </div>
 
@@ -473,6 +498,36 @@
     </div><!-- /appShell -->
 
     <div id="toast"></div>
+
+    <!-- Edit Menu Item Modal -->
+    <div id="editMenuModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:14px;padding:28px;width:420px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+        <h3 style="margin:0 0 18px;font-size:1rem;color:#1e293b">&#9998; Edit Menu Item</h3>
+        <input type="hidden" id="editItemId" />
+        <div style="display:grid;gap:10px">
+          <input id="editItemName" placeholder="Item name" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem" />
+          <select id="editItemCategory" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem">
+            <option value="Breakfast">Breakfast</option>
+            <option value="Snacks">Snacks</option>
+            <option value="Beverage">Beverage</option>
+            <option value="Lunch">Lunch</option>
+            <option value="Combo">Combo</option>
+          </select>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <input id="editItemPrice" type="number" min="1" placeholder="Price (&#8377;)" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem" />
+            <input id="editItemPrep" type="number" min="1" placeholder="Prep time (min)" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem" />
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:#64748b">
+            <input type="checkbox" id="editItemCombo" /> Is Combo?
+          </label>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px">
+          <button class="btn btn-success" id="saveEditBtn" style="flex:1;padding:11px">Save Changes</button>
+          <button class="btn" onclick="closeEditModal()" style="flex:1;padding:11px;background:#f1f5f9;color:#475569">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <script src="/admin.js"></script>
   </body>
 </html>

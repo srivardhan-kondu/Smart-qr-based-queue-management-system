@@ -36,16 +36,57 @@ async function api(path, method = 'GET', body) {
   return data;
 }
 
+/* ── QR Scanner management ── */
+let qrScanner = null;
+let qrScannerRunning = false;
+
+function startQrScanner() {
+  if (!window.Html5Qrcode || qrScannerRunning) return;
+  qrScanner = new window.Html5Qrcode('reader');
+  qrScanner
+    .start(
+      { facingMode: 'environment' },
+      { fps: 8, qrbox: 200 },
+      (decoded) => {
+        try {
+          const payload = JSON.parse(decoded);
+          if (payload.qrToken) {
+            $('qrTokenInput').value = payload.qrToken;
+            $('verifyQrBtn').click();
+          }
+        } catch (_) {
+          $('qrTokenInput').value = decoded;
+        }
+      },
+      () => {}
+    )
+    .then(() => { qrScannerRunning = true; })
+    .catch((err) => {
+      console.warn('Camera scanner unavailable:', err);
+      $('reader').innerHTML = '<p style="color:#94a3b8;font-size:.85rem;padding:20px;text-align:center">Camera not available.<br>Use Manual Token Entry below.</p>';
+    });
+}
+
+function stopQrScanner() {
+  if (qrScanner && qrScannerRunning) {
+    qrScanner.stop().then(() => {
+      qrScannerRunning = false;
+      qrScanner.clear();
+    }).catch(() => {});
+  }
+}
+
 /* ── Tab switching ── */
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach((el) => el.classList.remove('active'));
   document.querySelectorAll('.nav-btn[data-tab]').forEach((btn) => btn.classList.remove('active'));
   $('tab-' + name).classList.add('active');
   document.querySelector(`.nav-btn[data-tab="${name}"]`).classList.add('active');
-  if (name === 'dashboard') loadDashboard();
-  else if (name === 'orders') loadOrders();
-  else if (name === 'menu') loadMenu();
-  else if (name === 'analytics') loadAnalytics();
+  if (name === 'dashboard') { stopQrScanner(); loadDashboard(); }
+  else if (name === 'orders') { stopQrScanner(); loadOrders(); }
+  else if (name === 'qrscan') { startQrScanner(); }
+  else if (name === 'menu') { stopQrScanner(); loadMenu(); }
+  else if (name === 'analytics') { stopQrScanner(); loadAnalytics(); }
 }
 
 /* ── Relative time helper ── */
@@ -242,14 +283,22 @@ async function loadMenu() {
 function renderMenu(items) {
   if (items.length === 0) { $('menuGrid').innerHTML = '<p style="color:#94a3b8">No menu items.</p>'; return; }
   $('menuGrid').innerHTML = items.map((item) => `
-    <div class="menu-card ${item.active ? '' : 'off'}">
-      <button class="toggle-pill ${item.active ? 'on' : 'off'}" onclick="toggleItem(${item.id})">
-        ${item.active ? 'Active' : 'Off'}
-      </button>
+    <div class="menu-card ${item.active ? '' : 'off'}" id="mc-${item.id}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:8px">
+        <button class="toggle-pill ${item.active ? 'on' : 'off'}" onclick="toggleItem(${item.id})">
+          ${item.active ? 'Active' : 'Inactive'}
+        </button>
+        ${item.out_of_stock ? '<span style="font-size:.7rem;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-weight:600">Out of Stock</span>' : ''}
+      </div>
       <div class="menu-name">${item.name}</div>
       <div class="menu-cat">${item.category}</div>
-      <div class="menu-price">₹${item.price}</div>
-      <div class="menu-meta">⏱ ${item.prep_time_min} min${item.is_combo ? ' · 🎁 Combo' : ''}</div>
+      <div class="menu-price">&#8377;${item.price}</div>
+      <div class="menu-meta">&#9203; ${item.prep_time_min} min${item.is_combo ? ' &middot; &#127873; Combo' : ''}</div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button onclick="openEditModal(${item.id}, '${item.name.replace(/'/g, "&#39;")}', '${item.category}', ${item.price}, ${item.prep_time_min}, ${item.is_combo})" style="flex:1;padding:6px 0;font-size:.78rem;background:#f1f5f9;color:#475569;border:none;border-radius:7px;cursor:pointer">&#9998; Edit</button>
+        <button onclick="toggleStock(${item.id})" style="flex:1;padding:6px 0;font-size:.78rem;background:${item.out_of_stock ? '#d1fae5' : '#fef3c7'};color:${item.out_of_stock ? '#065f46' : '#92400e'};border:none;border-radius:7px;cursor:pointer">${item.out_of_stock ? '&#10003; In Stock' : '&#9888; Out of Stock'}</button>
+        <button onclick="deleteItem(${item.id}, '${item.name.replace(/'/g, "&#39;")}')" style="flex:0 0 32px;padding:6px 0;font-size:.82rem;background:#fee2e2;color:#991b1b;border:none;border-radius:7px;cursor:pointer">&#128465;</button>
+      </div>
     </div>
   `).join('');
 }
@@ -263,6 +312,61 @@ async function toggleItem(id) {
     toast(e.message, 'error');
   }
 }
+
+async function toggleStock(id) {
+  try {
+    const data = await api(`/api/admin/menu/${id}/stock`, 'PATCH');
+    toast(data.out_of_stock ? 'Marked as Out of Stock' : 'Marked as In Stock ✓', data.out_of_stock ? 'info' : 'success');
+    loadMenu();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteItem(id, name) {
+  if (!confirm(`Delete "${name}" permanently?\nThis cannot be undone.`)) return;
+  try {
+    await api(`/api/admin/menu/${id}`, 'DELETE');
+    toast(`"${name}" deleted`, 'info');
+    loadMenu();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function openEditModal(id, name, category, price, prep, isCombo) {
+  $('editItemId').value    = id;
+  $('editItemName').value  = name;
+  $('editItemPrice').value = price;
+  $('editItemPrep').value  = prep;
+  $('editItemCombo').checked = !!isCombo;
+  $('editItemCategory').value = category;
+  $('editMenuModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+  $('editMenuModal').style.display = 'none';
+}
+
+$('saveEditBtn').addEventListener('click', async () => {
+  const id      = $('editItemId').value;
+  const name    = $('editItemName').value.trim();
+  const category = $('editItemCategory').value;
+  const price   = parseFloat($('editItemPrice').value);
+  const prepTime = parseInt($('editItemPrep').value);
+  const isCombo = $('editItemCombo').checked;
+  if (!name || !category || !price || !prepTime) {
+    toast('Fill all fields', 'error'); return;
+  }
+  try {
+    await api(`/api/admin/menu/${id}/edit`, 'PATCH', { name, category, price, prepTime, isCombo });
+    toast('Item updated ✓', 'success');
+    closeEditModal();
+    loadMenu();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+});
 
 /* ════ ANALYTICS ════ */
 async function loadAnalytics() {
@@ -368,6 +472,31 @@ document.querySelectorAll('.nav-btn[data-tab]').forEach((btn) => {
 $('refreshDashBtn').addEventListener('click', loadDashboard);
 $('refreshOrdersBtn').addEventListener('click', loadOrders);
 $('refreshMenuBtn').addEventListener('click', loadMenu);
+
+$('addMenuItemBtn').addEventListener('click', async () => {
+  const name = $('newItemName').value.trim();
+  const category = $('newItemCategory').value;
+  const price = parseFloat($('newItemPrice').value);
+  const prepTime = parseInt($('newItemPrep').value);
+  const isCombo = $('newItemCombo').checked;
+
+  if (!name || !category || !price || !prepTime) {
+    toast('Fill all fields: name, category, price, prep time', 'error');
+    return;
+  }
+  try {
+    await api('/api/admin/menu', 'POST', { name, category, price, prepTime, isCombo });
+    toast('Menu item added ✓', 'success');
+    $('newItemName').value = '';
+    $('newItemCategory').value = '';
+    $('newItemPrice').value = '';
+    $('newItemPrep').value = '';
+    $('newItemCombo').checked = false;
+    loadMenu();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+});
 $('refreshAnalyticsBtn').addEventListener('click', loadAnalytics);
 
 /* filter buttons */
@@ -418,26 +547,4 @@ $('collectBtn').addEventListener('click', async () => {
 window.addEventListener('load', async () => {
   await refreshAdmin().catch(() => {});
 
-  /* QR camera scanner */
-  if (window.Html5Qrcode) {
-    const scanner = new window.Html5Qrcode('reader');
-    scanner
-      .start(
-        { facingMode: 'environment' },
-        { fps: 8, qrbox: 200 },
-        (decoded) => {
-          try {
-            const payload = JSON.parse(decoded);
-            if (payload.qrToken) {
-              $('qrTokenInput').value = payload.qrToken;
-              $('verifyQrBtn').click();
-            }
-          } catch (_) {
-            $('qrTokenInput').value = decoded;
-          }
-        },
-        () => {}
-      )
-      .catch(() => {});
-  }
 });

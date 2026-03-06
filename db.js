@@ -24,6 +24,7 @@ function initDb() {
       price REAL NOT NULL,
       prep_time_min INTEGER NOT NULL,
       active INTEGER NOT NULL DEFAULT 1,
+      out_of_stock INTEGER NOT NULL DEFAULT 0,
       is_combo INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
@@ -116,6 +117,12 @@ function initDb() {
     });
 
     insertMany(seedItems);
+  }
+
+  // Migration: add out_of_stock column if it doesn't exist
+  const cols = db.pragma('table_info(menu_items)').map((c) => c.name);
+  if (!cols.includes('out_of_stock')) {
+    db.exec('ALTER TABLE menu_items ADD COLUMN out_of_stock INTEGER NOT NULL DEFAULT 0');
   }
 }
 

@@ -512,6 +512,54 @@ app.patch('/api/admin/menu/:id/toggle', authRequired, adminRequired, (req, res) 
   return res.json({ active: newActive });
 });
 
+app.patch('/api/admin/menu/:id/stock', authRequired, adminRequired, (req, res) => {
+  const item = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  const newStock = item.out_of_stock ? 0 : 1;
+  db.prepare('UPDATE menu_items SET out_of_stock = ? WHERE id = ?').run(newStock, item.id);
+  return res.json({ out_of_stock: newStock });
+});
+
+app.patch('/api/admin/menu/:id/edit', authRequired, adminRequired, (req, res) => {
+  const item = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  const { name, category, price, prepTime, isCombo } = req.body;
+  if (!name || !category || !price || !prepTime) {
+    return res.status(400).json({ error: 'Name, category, price and prep time are required' });
+  }
+  db.prepare(
+    'UPDATE menu_items SET name = ?, category = ?, price = ?, prep_time_min = ?, is_combo = ? WHERE id = ?'
+  ).run(String(name).trim(), String(category).trim(), Number(price), Number(prepTime), isCombo ? 1 : 0, item.id);
+  return res.json({ message: 'Item updated' });
+});
+
+app.delete('/api/admin/menu/:id', authRequired, adminRequired, (req, res) => {
+  const item = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  const pendingOrders = db.prepare(
+    `SELECT COUNT(*) AS cnt FROM order_items oi
+     JOIN orders o ON o.id = oi.order_id
+     WHERE oi.menu_item_id = ? AND o.order_status IN ('RECEIVED','PREPARING','READY')`
+  ).get(req.params.id);
+  if (pendingOrders.cnt > 0) {
+    return res.status(400).json({ error: 'Cannot delete: item has active pending orders' });
+  }
+  db.prepare('DELETE FROM order_items WHERE menu_item_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM menu_items WHERE id = ?').run(req.params.id);
+  return res.json({ message: 'Item deleted' });
+});
+
+app.post('/api/admin/menu', authRequired, adminRequired, (req, res) => {
+  const { name, category, price, prepTime, isCombo } = req.body;
+  if (!name || !category || !price || !prepTime) {
+    return res.status(400).json({ error: 'Name, category, price and prep time are required' });
+  }
+  const result = db.prepare(
+    'INSERT INTO menu_items (name, category, price, prep_time_min, is_combo, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(String(name).trim(), String(category).trim(), Number(price), Number(prepTime), isCombo ? 1 : 0, new Date().toISOString());
+  res.status(201).json({ message: 'Menu item added', id: result.lastInsertRowid });
+});
+
 app.get('/api/quick-access-qr', async (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   const dataUrl = await QRCode.toDataURL(baseUrl);
